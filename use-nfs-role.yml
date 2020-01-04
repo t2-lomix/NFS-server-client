@@ -1,0 +1,105 @@
+---  
+
+  - name: Setup NFS server
+    become: yes
+    hosts: nfs_server
+
+    vars:
+      nfs_mountpoint: '/nfsmount'
+      nfsserver: '192.168.42.41'
+      nfsexport: '/nfsshare'
+
+    tasks:
+
+    - name: Install the Packages
+      yum:
+        name: nfs-utils
+        state: latest
+
+    - name: Start & Enable rpcbind    
+      shell: systemctl enable rpcbind    &&  systemctl start rpcbind
+    - name: Start & Enable nfs_server
+      shell: systemctl enable nfs-server &&  systemctl start nfs-server
+    - name: Start & Enable nfs-lock    
+      shell: systemctl enable nfs-lock   &&  systemctl start nfs-lock
+    - name: Start & Enable nfs-idmap
+      shell: systemctl enable nfs-idmap  &&  systemctl start nfs-idmap
+            
+    - name: Making the Shared Directory
+      file:
+        path={{ nfsexport }}
+        state=directory
+        mode=777
+        owner=nfsnobody
+        group=nfsnobody
+        
+       
+
+    - name: Export (Copy /etc/exports)
+      template:
+        src=exports.j2
+        dest=/etc/exports
+        owner=root
+        group=root
+        mode=766
+
+    - name: Making changes effective    
+      shell: exportfs -a
+      
+    - name: Firewall conf
+      shell: firewall-cmd --permanent --add-service mountd
+    - name: Firewall conf    
+      shell: firewall-cmd --permanent --add-service rpc-bind
+    - name: Firewall conf
+      shell: firewall-cmd --permanent --add-service nfs
+    - name: Firewall conf    
+      shell: firewall-cmd --reload 
+
+    - name: restart nfs-server
+      service:
+        name: nfs-server
+        state: restarted
+        enabled: yes
+
+  - hosts: nfs_client
+    become: yes
+
+    vars:
+      nfs_mountpoint: '/nfsmount'
+      nfsserver: '192.168.42.41'
+      nfsexport: '/nfsshare'
+
+
+    tasks:
+    
+      - name: Install the Packages
+        yum:
+          name: nfs-utils
+          state: latest
+
+      - name: Start & Enable rpcbind
+        shell: systemctl enable rpcbind    &&  systemctl start rpcbind
+      - name: Start & Enable nfs_server
+        shell: systemctl enable nfs-server &&  systemctl start nfs-server
+      - name: Start & Enable nfs-lock
+        shell: systemctl enable nfs-lock   &&  systemctl start nfs-lock
+      - name: Start & Enable nfs-idmap
+        shell: systemctl enable nfs-idmap  &&  systemctl start nfs-idmap    
+
+      - name: Create a mountpoint for nfs
+        file:
+         path={{ nfs_mountpoint }}
+         state=directory
+         mode=766
+         owner=root     
+               
+      - name: update fstab and mount nfs share
+        mount:
+         name={{ nfs_mountpoint }}
+         src={{ nfsserver }}:/{{ nfsexport }}
+         fstype=nfs
+         opts=rw,sync,hard,intr
+         dump=0
+         passno=0
+         state=mounted
+
