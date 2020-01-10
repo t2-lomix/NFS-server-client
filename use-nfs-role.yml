@@ -2,11 +2,11 @@
 
   - name: Setup NFS server
     become: yes
-    hosts: nfs_server
+    hosts: nfs
 
     vars:
       nfs_mountpoint: '/nfsmount'
-      nfsserver: '192.168.42.41'
+      nfsserver: 'prdx-nfs12'
       nfsexport: '/nfsshare'
 
     tasks:
@@ -46,52 +46,81 @@
     - name: Making changes effective    
       shell: exportfs -a
       
-    - name: Firewall conf
-      shell: firewall-cmd --permanent --add-service mountd
-    - name: Firewall conf    
-      shell: firewall-cmd --permanent --add-service rpc-bind
-    - name: Firewall conf
-      shell: firewall-cmd --permanent --add-service nfs
-    - name: Firewall conf    
-      shell: firewall-cmd --reload 
-
     - name: restart nfs-server
       service:
         name: nfs-server
         state: restarted
         enabled: yes
 
-  - hosts: nfs_client
+  - hosts: all,!nfs
     become: yes
 
     vars:
       nfs_mountpoint: '/nfsmount'
-      nfsserver: '192.168.42.41'
+      nfsserver: 'prdx-nfs12'
       nfsexport: '/nfsshare'
-
-
+      autofs: '/autohomes'
+      
     tasks:
     
       - name: Install the Packages
         yum:
-          name: nfs-utils
+          name: nfs-utils*,autofs
           state: latest
-
+     
       - name: Start & Enable rpcbind
-        shell: systemctl enable rpcbind    &&  systemctl start rpcbind
+        systemd:
+          name: rpcbind
+          enabled: yes
+          state: restarted
+
       - name: Start & Enable nfs_server
-        shell: systemctl enable nfs-server &&  systemctl start nfs-server
+        systemd:
+          name: nfs
+          enabled: yes
+          state: restarted
+
       - name: Start & Enable nfs-lock
-        shell: systemctl enable nfs-lock   &&  systemctl start nfs-lock
+        systemd:
+          name: nfs-lock
+          enabled: yes
+          state: restarted
+
       - name: Start & Enable nfs-idmap
-        shell: systemctl enable nfs-idmap  &&  systemctl start nfs-idmap    
+        systemd:
+          name: nfs-idmap
+          enabled: yes
+          state: restarted
 
       - name: Create a mountpoint for nfs
         file:
          path={{ nfs_mountpoint }}
          state=directory
-         mode=766
+         mode=755
+         owner=root
+
+      - name: Create a mountpoint for autofs
+        file:
+         path={{ autofs }}
+         state=directory
+         mode=755
          owner=root     
+
+      - name: copy config file to server
+        copy:
+         src: "auto.master"
+         dest: "/etc/auto.master"
+         owner: root
+         group: root
+         mode: '0644'
+
+      - name: copy config file to server
+        copy:
+         src: "autofs.ldap"
+         dest: "/etc/autofs.ldap"
+         owner: root
+         group: root
+         mode: '0644'
                
       - name: update fstab and mount nfs share
         mount:
@@ -102,4 +131,9 @@
          dump=0
          passno=0
          state=mounted
-
+       
+      - name: Start & Enable nfs-idmap
+        systemd:
+          name: autofs
+          enabled: yes
+          state: restarted

@@ -1,0 +1,1 @@
+ldap_homes -fstype=nfs4,rw,soft,intr prdx-nfs12:/ldap_homes
